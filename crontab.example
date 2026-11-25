@@ -1,0 +1,2 @@
+# Ежедневно в 08:00 по времени сервера. Укажите абсолютные пути.
+0 8 * * * cd /opt/kantkod && /opt/kantkod/.venv/bin/python main.py --mode fetch >> fetch.log 2>&1
