@@ -4,6 +4,7 @@ import re
 from openai import OpenAI, OpenAIError
 from pydantic import ValidationError
 
+from preprocessor import FIELDS
 from schemas import Evidence, Issue, ModelReport, VacancyReport
 
 
@@ -58,8 +59,9 @@ structured.requirement.qualification, а поле description может отс�
 """
 
 PAY_MENTION = re.compile(
-    r"₽|зарплат|оклад|оплат|тариф|ставк|вознагражден|заработ|"
-    r"доход|рубл|тысяч|денеж|бесплат|безвозмезд",
+    r"₽|\bзарплат|\bоклад|\bоплат[аыуе]\s+(?:труда|работы|договорн)"
+    r"|\bоплата\s*[:—-]|\bвознагражден|\bзаработн|\bбезвозмезд"
+    r"|\b\d[\d\s.,]*(?:руб\b|рубл|тыс\.?\s*руб|RUB\b)",
     re.IGNORECASE,
 )
 POSITIVE_EXPERIENCE = re.compile(
@@ -71,6 +73,8 @@ WORK_CYCLE = re.compile(
     re.IGNORECASE,
 )
 CLOCK_TIME = re.compile(r"\b\d{1,2}:\d{2}\b")
+NUMERIC_VALUE = re.compile(r"[+-]?\d+(?:[.,]\d+)?")
+SOURCE_FIELDS = frozenset((*FIELDS, "description"))
 
 
 def source_values(value, path: tuple[str, ...]):
@@ -84,25 +88,30 @@ def source_values(value, path: tuple[str, ...]):
                 yield from source_values(item, path)
     elif path and isinstance(value, dict) and path[0] in value:
         yield from source_values(value[path[0]], path[1:])
-    elif not path and isinstance(value, (str, int, float)):
+    elif not path and type(value) in (str, int, float):
         yield str(value)
 
 
-def validate_findings(vacancy: dict, candidates: list) -> list[Issue]:
+def validate_findings(vacancy: dict, candidates: list[ModelIssue]) -> list[Issue]:
     source = {**vacancy["structured"], "description": vacancy["description"]}
     issues = []
+    seen = set()
     for candidate in candidates:
         evidence = []
         for item in candidate.evidence:
             field = item.source_field.strip().removeprefix("structured.")
-            if not field:
+            path = tuple(field.replace("[", ".").replace("]", "").split("."))
+            if path[0] not in SOURCE_FIELDS or "" in path:
                 continue
             if candidate.kind == "missing":
                 evidence = [Evidence(source_field=field, quote="")]
                 break
             quote = item.quote.strip()
-            path = tuple(field.replace("[", ".").replace("]", "").split("."))
-            if quote and any(quote in value for value in source_values(source, path)):
+            if quote and any(
+                quote == value.strip() if NUMERIC_VALUE.fullmatch(value.strip())
+                else quote in value
+                for value in source_values(source, path)
+            ):
                 entry = Evidence(source_field=field, quote=quote)
                 if entry not in evidence:
                     evidence.append(entry)
@@ -114,8 +123,12 @@ def validate_findings(vacancy: dict, candidates: list) -> list[Issue]:
                           recommendation=candidate.recommendation)
         except ValidationError:
             continue
-        if issue not in issues:
+        key = (issue.topic, issue.kind, frozenset(
+            (item.source_field, item.quote) for item in issue.evidence
+        ))
+        if key not in seen:
             issues.append(issue)
+            seen.add(key)
     return issues
 
 

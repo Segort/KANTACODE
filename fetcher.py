@@ -3,6 +3,8 @@ from pathlib import Path
 
 import httpx
 
+DEFAULT_API_URL = "http://opendata.trudvsem.ru/api/v1/vacancies/region/39"
+
 
 def unpack_vacancies(payload):
     if not isinstance(payload, dict):

@@ -8,12 +8,9 @@ from dotenv import load_dotenv
 from openai import OpenAIError
 
 from analyzer import Analyzer
-from fetcher import fetch_vacancies, load_local_vacancies
+from fetcher import DEFAULT_API_URL, fetch_vacancies, load_local_vacancies
 from preprocessor import preprocess
 from storage import save_report
-
-DEFAULT_API_URL = "http://opendata.trudvsem.ru/api/v1/vacancies/region/39"
-
 
 def main(argv=None) -> int:
     load_dotenv(Path(__file__).with_name(".env"))
